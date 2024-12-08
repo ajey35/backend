@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enum for User roles
+enum Role {
+  DONOR
+  RECIPIENT
+}
+
+// Enum for Donation status
+enum DonationStatus {
+  PENDING
+  ACCEPTED
+  DONATED
+}
+
+// Enum for Organization types
+enum OrganizationType {
+  NGO
+  ORPHANAGE
+  OTHER
+}
+
+// Donation Model
+model Donation {
+  id             Int             @id @default(autoincrement())
+  donorId        Int?            // Nullable if donor doesn't have an account
+  recipientId    Int?            // Nullable for unassigned donations
+  organizationId Int?            // Nullable for donations not tied to an organization
+  foodType       String          // Type of food (e.g., vegetarian, non-vegetarian)
+  quality        Int             // Quality of food (e.g., 1-5 rating)
+  contactNumber  String          // Donor's contact number
+  status         DonationStatus  // Status of donation (PENDING, ACCEPTED, etc.)
+  location       String          // Pickup location (address or coordinates)
+  desc           String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  
+  // Relations
+  donor          User?           @relation("DonorDonations", fields: [donorId], references: [id])
+  recipient      User?           @relation("RecipientDonations", fields: [recipientId], references: [id])
+  organization   Organization?   @relation(fields: [organizationId], references: [id])
+  images         DonationImage[] // General donation images
+  foodPhotos     FoodPhoto[]     // Photos of the food specifically
+  feedbacks      Feedback[]      @relation("DonationFeedback")
+
+  // Indexes for optimization
+  @@index([donorId])
+  @@index([recipientId])
+  @@index([organizationId])
+  Feedback Feedback[]
+}
+
+// FoodPhoto model for storing specific food photos
+model FoodPhoto {
+  id          Int       @id @default(autoincrement())
+  donationId  Int       // Associated donation ID
+  photoUrl    String    // URL of the food photo uploaded to cloud storage
+  donation    Donation  @relation(fields: [donationId], references: [id])
+}
+
+// DonationImage model for storing general images
+model DonationImage {
+  id          Int       @id @default(autoincrement())
+  donationId  Int       // Associated donation ID
+  imageUrl    String    // URL of the image uploaded to cloud storage
+  donation    Donation  @relation(fields: [donationId], references: [id])
+}
+
+// User model for Donors and Recipients
+model User {
+  id              Int          @id @default(autoincrement())
+  username        String       @unique 
+  email           String       @unique
+  password        String
+  role            Role
+  phone           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  donations       Donation[]   @relation("DonorDonations")  // Donations given by the user
+  received        Donation[]   @relation("RecipientDonations")  // Donations received by the user
+  feedbackGiven   Feedback[]   @relation("DonorFeedbackRelation")  // Feedback given as donor
+  feedbackReceived Feedback[]  @relation("RecipientFeedbackRelation")  // Feedback received as recipient
+
+  organization    Organization? @relation("UserOrganization", fields: [organizationId], references: [id]) // Organization relation
+  organizationId  Int?
+
+  Organization Organization[]
+}
+
+// Organization model for recipient details (NGOs, orphanages, etc.)
+model Organization {
+  id               Int                 @id @default(autoincrement())
+  name             String              // Name of the organization
+  address          String              // Address of the organization
+  phone            String?             // Contact phone number
+  email            String?             // Email (optional)
+  website          String?             // Website URL (optional)
+  type             OrganizationType    // Type of the organization (NGO, orphanage, etc.)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  numberOfDonations Int                @default(0) // Number of donations received
+
+  // Relations
+  users            User[]              // Users (recipients) belonging to this organization
+  donations        Donation[]          // Donations assigned to this organization
+  organizationPhotos OrganizationPhoto[]  // Photos associated with the organization
+
+  User User[] @relation("UserOrganization")
+}
+// Model to store photos of the organization
+// Model to store photos of the organization
+model OrganizationPhoto {
+  id             Int       @id @default(autoincrement())
+  organizationId Int       // Associated organization ID
+  photoUrl       String    // URL of the photo uploaded to cloud storage
+  createdAt      DateTime  @default(now()) // Timestamp when the photo was added
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  // Index for optimized queries
+  @@index([organizationId])
+}
+
+// Feedback model for ratings and comments on donation events
+model Feedback {
+  id                Int         @id @default(autoincrement())
+  donationId        Int         // Associated donation
+  donorId           Int?        // Donor who provided feedback (optional)
+  recipientId       Int?        // Recipient who provided feedback (optional)
+  
+  donorRating       Int?        // Rating provided by the donor (1 to 5)
+  recipientRating   Int?        // Rating provided by the recipient (1 to 5)
+  donorComment      String?     // Optional comment from the donor
+  recipientComment  String?     // Optional comment from the recipient
+  
+  createdAt         DateTime    @default(now())
+  
+  // Relations
+  donation          Donation    @relation(fields: [donationId], references: [id])
+  donor             User?       @relation("DonorFeedbackRelation", fields: [donorId], references: [id]) 
+  recipient         User?       @relation("RecipientFeedbackRelation", fields: [recipientId], references: [id])
+
+  Donation Donation[] @relation("DonationFeedback")
+}
